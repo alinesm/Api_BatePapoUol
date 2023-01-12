@@ -69,3 +69,24 @@ server.get("/participants", async (req, res) => {
 server.listen(5001, () => {
   console.log("Servidor funfou de boas!!!");
 });
+
+server.post("/messages", async (req, res) => {
+  const { to, text, type } = req.body;
+  const from = req.headers.user;
+  const time = dayjs().format("HH:mm:ss");
+
+  try {
+    await db.collection("messages").insertOne({
+      to: to,
+      text: text,
+      type: type,
+      from: from,
+      time: time,
+    });
+
+    res.status(201);
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Deu algo errado no servidor");
+  }
+});
