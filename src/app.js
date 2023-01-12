@@ -1,89 +1,71 @@
 import express from "express";
 import cors from "cors";
 import dayjs from "dayjs";
+import { MongoClient } from "mongodb";
+import dotenv from "dotenv";
+
+dotenv.config();
+
+const mongoClient = new MongoClient(process.env.DATABASE_URL);
+let db;
+
+try {
+  await mongoClient.connect();
+  db = mongoClient.db();
+} catch (error) {
+  console.log("Deu errro no server");
+}
 
 const server = express();
 
 server.use(express.json());
 server.use(cors());
 
-const removedMessages = [];
+server.post("/participants", async (req, res) => {
+  const { name } = req.body;
+  const time = dayjs().format("HH:mm:ss");
+
+  try {
+    const nameExists = await db.collection("participants").findOne({ name });
+
+    if (nameExists) {
+      console.log("ja existe");
+      return res.status(409);
+    }
+
+    await db
+      .collection("participants")
+      .insertOne({ name: name, lastStatus: Date.now() });
+
+    await db.collection("messages").insertOne({
+      from: name,
+      to: "Todos",
+      text: "entra na sala...",
+      type: "status",
+      time: time,
+    });
+
+    res.status(201);
+    console.log("inseriu");
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Deu algo errado no servidor");
+  }
+});
+
+server.get("/participants", async (req, res) => {
+  try {
+    const participantsList = await db
+      .collection("participants")
+      .find()
+      .toArray();
+
+    res.send(participantsList);
+  } catch (error) {
+    res.status(500).send("Deu zica no servidor de banco de dados");
+  }
+});
 
 server.listen(5001, () => {
   console.log("Servidor funfou de boas!!!");
-});
-
-server.post("/participants", (req, res) => {
-  const { name } = req.body;
-  const participantData = { name: name, lastStatus: Date.now() };
-});
-
-server.get("/participants", (req, res) => {
-  res.send(participants);
-});
-
-server.post("/messages", (req, res) => {
-  const { to, text, type } = req.body;
-  const from = req.headers.user;
-  const time = dayjs().format("HH:mm:ss");
-  console.log(time);
-
-  const messageData = {
-    to: to,
-    text: text,
-    type: type,
-    from: from,
-    time: time,
-  };
-
-  // send message
-
-  res.status(201);
-});
-
-server.get("/messages", (req, res) => {
-  const limit = req.query.limit;
-  const from = req.headers.user;
-
-  if (limit) {
-  }
-
-  res.send(allMessages);
-});
-
-function removeLastTen() {
-  const filteredBysec = participantes.filter((it) => {
-    const timeTest = Math.round((timestamp - it.lastStatus) / 1000);
-    if (timeTest < 10) {
-      return { name: it.name, lastStatus: it.lastStatus };
-    } else if (timeTest > 10) {
-      removedMessages.push({
-        from: it.name,
-        to: "Todos",
-        text: "sai da sala...",
-        type: "status",
-        time: dayjs().format("HH:mm:ss"),
-      });
-    }
-  });
-  console.log("filtere", filteredBysec);
-  console.log("arr", removedMessages);
-}
-
-server.post("/status", (req, res) => {
-  const tweet = req.body.tweet;
-  const from = req.headers.user;
-
-  // const userExists = users.find(item => item.username === from)
-
-  if (!userExists) return res.status(404);
-
-  const timestamp = Date.now();
-  const date = new Date(timestamp);
-  const seconds = date.getSeconds();
-  console.log(seconds);
-
-  setInterval(removeLastTen, 15000);
-
-  res.status(200);
 });
