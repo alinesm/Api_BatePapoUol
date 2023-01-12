@@ -66,10 +66,6 @@ server.get("/participants", async (req, res) => {
   }
 });
 
-server.listen(5001, () => {
-  console.log("Servidor funfou de boas!!!");
-});
-
 server.post("/messages", async (req, res) => {
   const { to, text, type } = req.body;
   const from = req.headers.user;
@@ -84,9 +80,41 @@ server.post("/messages", async (req, res) => {
       time: time,
     });
 
+    // console.log({
+    //   to: to,
+    //   text: text,
+    //   type: type,
+    //   from: from,
+    //   time: time,
+    // });
     res.status(201);
   } catch (err) {
     console.log(err);
     res.status(500).send("Deu algo errado no servidor");
   }
+});
+
+server.post("/status", async (req, res) => {
+  const name = req.headers.user;
+
+  try {
+    const nameExists = await db
+      .collection("participants")
+      .findOne({ name: name });
+
+    if (!nameExists) return res.status(404);
+
+    await db
+      .collection("participants")
+      .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
+
+    res.status(200);
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Deu algo errado no servidor");
+  }
+});
+
+server.listen(process.env.PORT, () => {
+  console.log("Servidor funfou de boas!!!");
 });
