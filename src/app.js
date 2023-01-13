@@ -60,7 +60,7 @@ server.get("/participants", async (req, res) => {
       .find()
       .toArray();
 
-    res.send(participantsList);
+    res.status(200).send(participantsList);
   } catch (error) {
     res.status(500).send("Deu zica no servidor de banco de dados");
   }
@@ -129,12 +129,40 @@ server.get("/messages", async (req, res) => {
       .limit(parseInt(limit))
       .toArray();
 
-    res.send(allowedMessages);
+    res.status(200).send(allowedMessages);
   } catch (error) {
     res.status(500).send("Deu zica no servidor de banco de dados");
   }
 });
 
-server.listen(5001, () => {
+async function removeInactives() {
+  const time = dayjs().format("HH:mm:ss");
+
+  try {
+    const participants = await db.collection("participants").find().toArray();
+
+    participants.forEach(async (item) => {
+      const timeDifference = Date.now() - item.lastStatus;
+      if (timeDifference > 10000) {
+        await db.collection("messages").insertOne({
+          from: item.name,
+          to: "Todos",
+          text: "sai da sala...",
+          type: "status",
+          time: time,
+        });
+
+        await db.collection("participants").deleteOne({ _id: item._id });
+      }
+    });
+  } catch (err) {
+    console.log(err);
+    return res.sendStatus(500);
+  }
+}
+
+setInterval(removeInactives, 15000);
+
+server.listen(5000, () => {
   console.log("Servidor funfou de boas!!!");
 });
