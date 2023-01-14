@@ -28,17 +28,17 @@ server.post("/participants", async (req, res) => {
   const time = dayjs().format("HH:mm:ss");
 
   if (!name) {
-    return res.statusCode(422);
+    return res.status(422).send("empty name");
   }
 
   const participantSchema = joi.object({
     name: joi.string().min(1).required(),
   });
 
-  const validation = participantSchema.validate({ name });
+  const { error } = participantSchema.validate({ name });
 
-  if (validation.error) {
-    return res.status(422).send(error);
+  if (error) {
+    return res.status(422).send("error in validation");
   }
 
   const nameExists = await db
@@ -47,7 +47,7 @@ server.post("/participants", async (req, res) => {
 
   if (nameExists) {
     console.log("ja existe");
-    return res.statusCode(409);
+    return res.status(409).send("user exists");
   }
 
   try {
@@ -64,7 +64,7 @@ server.post("/participants", async (req, res) => {
     });
 
     console.log("inseriu");
-    return res.statusCode(201);
+    return res.status(201).send("participant inserted");
   } catch (err) {
     console.log(err);
     res.status(422).send("Deu algo errado no servidor");
@@ -82,17 +82,17 @@ server.post("/messages", async (req, res) => {
   const { user } = req.headers;
   const time = dayjs().format("HH:mm:ss");
 
-  if (!user) return res.statusCode(422);
+  if (!user) return res.status(422).send("user empty");
 
-  if (!to || !text || !type) {
-    return res.statusCode(422);
-  }
+  // if (!to || !text || !type) {
+  //   return res.status(422).send("empty values");
+  // }
 
   const userExist = await db.collection("participants").findOne({ name: user });
 
   if (!userExist) {
     console.log("nao existe user");
-    return res.statusCode(422);
+    return res.status(422).send("user doesnt exist");
   }
 
   const messageSchema = joi.object({
@@ -101,10 +101,10 @@ server.post("/messages", async (req, res) => {
     type: joi.string().valid("message", "private_message").required(),
   });
 
-  const validation = messageSchema.validate({ to, text, type });
+  const { error } = messageSchema.validate({ to, text, type });
 
-  if (validation.error) {
-    return res.status(422).send(errors);
+  if (error) {
+    return res.status(422).send("error to valide data");
   }
 
   try {
@@ -116,7 +116,7 @@ server.post("/messages", async (req, res) => {
       time: time,
     });
 
-    res.statusCode(201);
+    res.status(201).send("message sent");
   } catch (err) {
     console.log(err);
     res.status(422).send("Deu algo errado no servidor");
@@ -125,17 +125,16 @@ server.post("/messages", async (req, res) => {
 
 server.get("/messages", async (req, res) => {
   // const limit = req.query.limit || 0;
-  const { limit } = req.query;
+  const limit = req.query.limit;
   const { user } = req.headers;
 
-  if (!user) return res.statusCode(422);
+  if (!user) return res.status(422).send("user empty");
 
-  if (limit) {
-    limit = parseInt(limit);
-  }
+  const userExist = await db.collection("participants").findOne({ name: user });
 
-  if (limit < 1 || isNaN(limit)) {
-    return res.statusCode(422);
+  if (!userExist) {
+    console.log("nao existe user");
+    return res.status(422).send("user doesnt exist");
   }
 
   try {
@@ -143,6 +142,15 @@ server.get("/messages", async (req, res) => {
       .collection("messages")
       .find({ $or: [{ to: user }, { to: "Todos" }, { from: user }] })
       .toArray();
+
+    if (limit) {
+      const messagesLimit = Number(limit);
+
+      if (messagesLimit < 1 || isNaN(messagesLimit)) return res.sendStatus(422);
+      const allowedMessagesLimited = allowedMessages.slice(-limit).reverse();
+
+      return res.send(allowedMessagesLimited);
+    }
 
     const allowedMessagesReversed = allowedMessages.slice(-limit).reverse();
 
@@ -155,17 +163,19 @@ server.get("/messages", async (req, res) => {
 server.post("/status", async (req, res) => {
   const name = req.headers.user;
 
+  if (!name) return res.status(422).send("user empty");
+
   const nameExists = await db
     .collection("participants")
     .findOne({ name: name });
 
-  if (!nameExists) return res.statusCode(404);
+  if (!nameExists) return res.status(404).send("user doesnt exist");
   try {
     await db
       .collection("participants")
       .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
 
-    res.statusCode(200);
+    res.status(200).send("status changed");
   } catch (err) {
     console.log(err);
     res.status(422).send("Deu algo errado no servidor");
