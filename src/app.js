@@ -48,10 +48,10 @@ server.post("/participants", async (req, res) => {
 
     await db
       .collection("participants")
-      .insertOne({ name: name, lastStatus: Date.now() });
+      .insertOne({ name: userData.name, lastStatus: Date.now() });
 
     await db.collection("messages").insertOne({
-      from: name,
+      from: userData.name,
       to: "Todos",
       text: "entra na sala...",
       type: "status",
@@ -113,9 +113,9 @@ server.post("/messages", async (req, res) => {
     }
 
     await db.collection("messages").insertOne({
-      to: to,
-      text: text,
-      type: type,
+      to: messageData.to,
+      text: messageData.text,
+      type: messageData.type,
       from: user,
       time: time,
     });
