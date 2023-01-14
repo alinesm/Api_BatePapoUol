@@ -7,8 +7,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const mongoClient = new MongoClient(process.env.DATABASE_URL);
+const PORT = 5000;
 let db;
+
+const server = express();
+server.use(cors());
+server.use(express.json());
+
+const mongoClient = new MongoClient(process.env.DATABASE_URL);
 
 try {
   await mongoClient.connect();
@@ -16,11 +22,6 @@ try {
 } catch (error) {
   console.log("Deu errro no server");
 }
-
-const server = express();
-
-server.use(express.json());
-server.use(cors());
 
 server.post("/participants", async (req, res) => {
   const userData = req.body;
@@ -46,7 +47,7 @@ server.post("/participants", async (req, res) => {
 
     if (nameExists) {
       console.log("ja existe");
-      return res.status(409);
+      return res.statusCode(409);
     }
 
     await db
@@ -61,8 +62,8 @@ server.post("/participants", async (req, res) => {
       time: time,
     });
 
-    res.status(201);
     console.log("inseriu");
+    return res.statusCode(201);
   } catch (err) {
     console.log(err);
     res.status(500).send("Deu algo errado no servidor");
@@ -109,7 +110,7 @@ server.post("/messages", async (req, res) => {
 
     if (!userExist) {
       console.log("nao existe user");
-      return res.status(422);
+      return res.statusCode(422);
     }
 
     await db.collection("messages").insertOne({
@@ -120,7 +121,7 @@ server.post("/messages", async (req, res) => {
       time: time,
     });
 
-    res.status(201);
+    res.statusCode(201);
   } catch (err) {
     console.log(err);
     res.status(500).send("Deu algo errado no servidor");
@@ -181,13 +182,13 @@ server.post("/status", async (req, res) => {
       .collection("participants")
       .findOne({ name: name });
 
-    if (!nameExists) return res.status(404);
+    if (!nameExists) return res.statusCode(404);
 
     await db
       .collection("participants")
       .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
 
-    res.status(200);
+    res.statusCode(200);
   } catch (err) {
     console.log(err);
     res.status(500).send("Deu algo errado no servidor");
@@ -196,6 +197,6 @@ server.post("/status", async (req, res) => {
 
 setInterval(() => removeInactives(), 15000);
 
-server.listen(5000, () => {
+server.listen(PORT, () => {
   console.log("Servidor funfou de boas!!!");
 });
