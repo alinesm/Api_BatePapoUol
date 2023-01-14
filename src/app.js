@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dayjs from "dayjs";
+import joi from "joi";
 import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 
@@ -39,7 +40,9 @@ server.post("/participants", async (req, res) => {
   }
 
   try {
-    const nameExists = await db.collection("participants").findOne({ name });
+    const nameExists = await db
+      .collection("participants")
+      .findOne({ name: userData.name });
 
     if (nameExists) {
       console.log("ja existe");
@@ -84,13 +87,13 @@ server.post("/messages", async (req, res) => {
   const user = req.headers.user;
   const time = dayjs().format("HH:mm:ss");
 
-  const participantSchema = joi.object({
+  const messageSchema = joi.object({
     to: joi.string().not("").required(),
     text: joi.string().not("").required(),
-    type: joi.string().valid(["message", "private_message"]).required(),
+    type: joi.string().valid("message", "private_message").required(),
   });
 
-  const validation = participantSchema.validate(messageData, {
+  const validation = messageSchema.validate(messageData, {
     abortEarly: false,
   });
 
@@ -118,27 +121,6 @@ server.post("/messages", async (req, res) => {
     });
 
     res.status(201);
-  } catch (err) {
-    console.log(err);
-    res.status(500).send("Deu algo errado no servidor");
-  }
-});
-
-server.post("/status", async (req, res) => {
-  const name = req.headers.user;
-
-  try {
-    const nameExists = await db
-      .collection("participants")
-      .findOne({ name: name });
-
-    if (!nameExists) return res.status(404);
-
-    await db
-      .collection("participants")
-      .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
-
-    res.status(200);
   } catch (err) {
     console.log(err);
     res.status(500).send("Deu algo errado no servidor");
@@ -191,7 +173,28 @@ async function removeInactives() {
   }
 }
 
-setInterval(removeInactives, 15000);
+server.post("/status", async (req, res) => {
+  const name = req.headers.user;
+
+  try {
+    const nameExists = await db
+      .collection("participants")
+      .findOne({ name: name });
+
+    if (!nameExists) return res.status(404);
+
+    await db
+      .collection("participants")
+      .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
+
+    res.status(200);
+  } catch (err) {
+    console.log(err);
+    res.status(500).send("Deu algo errado no servidor");
+  }
+});
+
+setInterval(() => removeInactives(), 15000);
 
 server.listen(5000, () => {
   console.log("Servidor funfou de boas!!!");
