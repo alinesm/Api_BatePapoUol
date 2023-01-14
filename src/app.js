@@ -27,29 +27,31 @@ server.post("/participants", async (req, res) => {
   const userData = req.body;
   const time = dayjs().format("HH:mm:ss");
 
+  if (!userData) {
+    return res.statusCode(422);
+  }
+
   const participantSchema = joi.object({
-    name: joi.string().not("").required(),
+    name: joi.string().min(1).required(),
   });
 
-  const validation = participantSchema.validate(userData, {
-    abortEarly: false,
-  });
+  const validation = participantSchema.validate(userData);
 
   if (validation.error) {
     const errors = validation.error.details.map((detail) => detail.message);
     return res.status(422).send(errors);
   }
 
+  const nameExists = await db
+    .collection("participants")
+    .findOne({ name: userData.name });
+
+  if (nameExists) {
+    console.log("ja existe");
+    return res.statusCode(409);
+  }
+
   try {
-    const nameExists = await db
-      .collection("participants")
-      .findOne({ name: userData.name });
-
-    if (nameExists) {
-      console.log("ja existe");
-      return res.statusCode(409);
-    }
-
     await db
       .collection("participants")
       .insertOne({ name: userData.name, lastStatus: Date.now() });
@@ -66,21 +68,14 @@ server.post("/participants", async (req, res) => {
     return res.statusCode(201);
   } catch (err) {
     console.log(err);
-    res.status(500).send("Deu algo errado no servidor");
+    res.status(422).send("Deu algo errado no servidor");
   }
 });
 
 server.get("/participants", async (req, res) => {
-  try {
-    const participantsList = await db
-      .collection("participants")
-      .find()
-      .toArray();
+  const participantsList = await db.collection("participants").find().toArray();
 
-    res.send(participantsList);
-  } catch (error) {
-    res.status(500).send("Deu zica no servidor de banco de dados");
-  }
+  res.send(participantsList);
 });
 
 server.post("/messages", async (req, res) => {
@@ -88,15 +83,26 @@ server.post("/messages", async (req, res) => {
   const user = req.headers.user;
   const time = dayjs().format("HH:mm:ss");
 
+  if (!user) return res.statusCode(422);
+
+  if (!to || !text || !type) {
+    return res.statusCode(422);
+  }
+
+  const userExist = await db.collection("participants").findOne({ name: user });
+
+  if (!userExist) {
+    console.log("nao existe user");
+    return res.statusCode(422);
+  }
+
   const messageSchema = joi.object({
-    to: joi.string().not("").required(),
-    text: joi.string().not("").required(),
+    to: joi.string().min(1).required(),
+    text: joi.string().min(1).required(),
     type: joi.string().valid("message", "private_message").required(),
   });
 
-  const validation = messageSchema.validate(messageData, {
-    abortEarly: false,
-  });
+  const validation = messageSchema.validate(messageData);
 
   if (validation.error) {
     const errors = validation.error.details.map((detail) => detail.message);
@@ -104,45 +110,67 @@ server.post("/messages", async (req, res) => {
   }
 
   try {
-    const userExist = await db
-      .collection("participants")
-      .findOne({ name: user });
-
-    if (!userExist) {
-      console.log("nao existe user");
-      return res.statusCode(422);
-    }
-
     await db.collection("messages").insertOne({
+      from: user,
       to: messageData.to,
       text: messageData.text,
       type: messageData.type,
-      from: user,
       time: time,
     });
 
     res.statusCode(201);
   } catch (err) {
     console.log(err);
-    res.status(500).send("Deu algo errado no servidor");
+    res.status(422).send("Deu algo errado no servidor");
   }
 });
 
 server.get("/messages", async (req, res) => {
-  const limit = req.query.limit || 0;
+  // const limit = req.query.limit || 0;
+  const { limit } = req.query;
   const user = req.headers.user;
+
+  if (!user) return res.statusCode(422);
+
+  if (limit) {
+    limit = parseInt(limit);
+  }
+
+  if (limit < 1 || isNaN(limit)) {
+    return res.statusCode(422);
+  }
 
   try {
     const allowedMessages = await db
       .collection("messages")
       .find({ $or: [{ to: user }, { to: "Todos" }, { from: user }] })
-      .sort({ $natural: -1 })
-      .limit(parseInt(limit))
       .toArray();
 
-    res.send(allowedMessages);
+    const allowedMessagesReversed = allowedMessages.slice(0, limit).reverse();
+
+    res.send(allowedMessagesReversed);
   } catch (error) {
-    res.status(500).send("Deu zica no servidor de banco de dados");
+    res.status(422).send("Deu zica no servidor de banco de dados");
+  }
+});
+
+server.post("/status", async (req, res) => {
+  const name = req.headers.user;
+
+  const nameExists = await db
+    .collection("participants")
+    .findOne({ name: name });
+
+  if (!nameExists) return res.statusCode(404);
+  try {
+    await db
+      .collection("participants")
+      .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
+
+    res.statusCode(200);
+  } catch (err) {
+    console.log(err);
+    res.status(422).send("Deu algo errado no servidor");
   }
 });
 
@@ -163,9 +191,7 @@ async function removeInactives() {
           time: time,
         });
 
-        await db
-          .collection("participants")
-          .deleteOne({ _id: ObjectId(item._id) });
+        await db.collection("participants").deleteOne({ name: item.name });
       }
     });
   } catch (err) {
@@ -174,28 +200,7 @@ async function removeInactives() {
   }
 }
 
-server.post("/status", async (req, res) => {
-  const name = req.headers.user;
-
-  try {
-    const nameExists = await db
-      .collection("participants")
-      .findOne({ name: name });
-
-    if (!nameExists) return res.statusCode(404);
-
-    await db
-      .collection("participants")
-      .updateOne({ name: name }, { $set: { lastStatus: Date.now() } });
-
-    res.statusCode(200);
-  } catch (err) {
-    console.log(err);
-    res.status(500).send("Deu algo errado no servidor");
-  }
-});
-
-setInterval(() => removeInactives(), 15000);
+setInterval(removeInactives, 15000);
 
 server.listen(PORT, () => {
   console.log("Servidor funfou de boas!!!");
