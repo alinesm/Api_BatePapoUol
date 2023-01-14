@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dayjs from "dayjs";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -22,8 +22,21 @@ server.use(express.json());
 server.use(cors());
 
 server.post("/participants", async (req, res) => {
-  const { name } = req.body;
+  const userData = req.body;
   const time = dayjs().format("HH:mm:ss");
+
+  const participantSchema = joi.object({
+    name: joi.string().not("").required(),
+  });
+
+  const validation = participantSchema.validate(userData.name, {
+    abortEarly: false,
+  });
+
+  if (validation.error) {
+    const errors = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errors);
+  }
 
   try {
     const nameExists = await db.collection("participants").findOne({ name });
@@ -60,16 +73,34 @@ server.get("/participants", async (req, res) => {
       .find()
       .toArray();
 
-    res.status(200).send(participantsList);
+    res.send(participantsList);
   } catch (error) {
     res.status(500).send("Deu zica no servidor de banco de dados");
   }
 });
 
 server.post("/messages", async (req, res) => {
-  const { to, text, type } = req.body;
+  const messageData = req.body;
   const user = req.headers.user;
   const time = dayjs().format("HH:mm:ss");
+
+  const participantSchema = joi.object({
+    to: joi.string().not("").required(),
+    text: joi.string().not("").required(),
+    type: joi.string().valid(["message", "private_message"]).required(),
+  });
+
+  const validation = participantSchema.validate(
+    messageData.to,
+    messageData.text,
+    messageData.type,
+    { abortEarly: false }
+  );
+
+  if (validation.error) {
+    const errors = validation.error.details.map((detail) => detail.message);
+    return res.status(422).send(errors);
+  }
 
   try {
     const userExist = await db
@@ -78,7 +109,7 @@ server.post("/messages", async (req, res) => {
 
     if (!userExist) {
       console.log("nao existe user");
-      return res.status(404);
+      return res.status(422);
     }
 
     await db.collection("messages").insertOne({
@@ -129,7 +160,7 @@ server.get("/messages", async (req, res) => {
       .limit(parseInt(limit))
       .toArray();
 
-    res.status(200).send(allowedMessages);
+    res.send(allowedMessages);
   } catch (error) {
     res.status(500).send("Deu zica no servidor de banco de dados");
   }
@@ -152,7 +183,9 @@ async function removeInactives() {
           time: time,
         });
 
-        await db.collection("participants").deleteOne({ _id: item._id });
+        await db
+          .collection("participants")
+          .deleteOne({ _id: ObjectId(item._id) });
       }
     });
   } catch (err) {
